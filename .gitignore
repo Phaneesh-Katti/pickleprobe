@@ -1,0 +1,27 @@
+/polyglot/
+src/polyglot.egg-info/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+graphify-out/
+
+# Graphify / Claude local install artifacts (Cursor rule is tracked)
+.claude/
+CLAUDE.md
+
+# Curated corpus samples are tracked intentionally (tests/corpus/samples/)
+*.pkl
+!tests/corpus/samples/**/*.pkl
+*.pt
+!tests/corpus/samples/**/*.pt
+*.pth
+!tests/corpus/samples/**/*.pth
+
+# Optional full-scale archives (not in repo)
+tests/corpus/archives/

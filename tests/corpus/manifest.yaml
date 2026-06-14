@@ -1,0 +1,185 @@
+# Curated evaluation samples — hand-picked, ~12 KB total.
+# Full PickleBall Zenodo archives deferred (see scripts/download_corpus.sh).
+
+version: 2
+storage: samples
+
+samples:
+  # --- Benign: raw stdlib pickles (real pickle.dumps output) ---
+  - id: benign-datetime-p0
+    path: samples/benign/raw/datetime_protocol0.pkl
+    label: benign
+    technique: T_benign_stdlib
+    protocol: 0
+    source: generated-via-pickle.dumps
+    notes: "datetime constructor via GLOBAL; common legitimate pattern"
+    expected_globals:
+      - { module: datetime, name: datetime }
+
+  - id: benign-dict-p4
+    path: samples/benign/raw/dict_protocol4.pkl
+    label: benign
+    technique: T_benign_container
+    protocol: 4
+    source: generated-via-pickle.dumps
+    notes: "EMPTY_DICT + SETITEM; no dangerous globals"
+    expected_globals: []
+
+  - id: benign-tuple-p2
+    path: samples/benign/raw/tuple_protocol2.pkl
+    label: benign
+    technique: T_benign_container
+    protocol: 2
+    source: generated-via-pickle.dumps
+    notes: "TUPLE1/2/3 shortcuts; literals only"
+    expected_globals: []
+
+  - id: benign-newobj-build-p2
+    path: samples/benign/raw/newobj_build_protocol2.pkl
+    label: benign
+    technique: T_benign_newobj_build
+    protocol: 2
+    source: generated-via-pickle.dumps
+    notes: "NEWOBJ + BUILD __dict__ update; no dangerous globals"
+    expected_globals: []
+    min_newobj_events: 1
+    min_build_events: 1
+
+  - id: benign-list-p4
+    path: samples/benign/raw/list_protocol4.pkl
+    label: benign
+    technique: T_benign_container
+    protocol: 4
+    source: generated-via-pickle.dumps
+    notes: "APPENDS bulk list; exercises protocol-4 container opcodes"
+    expected_globals: []
+
+  - id: benign-set-p4
+    path: samples/benign/raw/set_protocol4.pkl
+    label: benign
+    technique: T_benign_container
+    protocol: 4
+    source: generated-via-pickle.dumps
+    notes: "ADDITEMS bulk set; exercises protocol-4 container opcodes"
+    expected_globals: []
+
+  # --- Benign: PyTorch (HuggingFace WolfpackArmy repo) ---
+  - id: benign-pytorch-model
+    path: samples/benign/pytorch/benign_model.pt
+    label: benign
+    technique: T_benign_pytorch
+    source: "https://huggingface.co/WolfpackArmy/pytorch-pickle-rce-poc"
+    notes: "Clean model shipped alongside PoC for comparison"
+    expected_globals: []
+
+  - id: benign-pytorch-torchscript
+    path: samples/benign/pytorch/benign_torchscript.pt
+    label: benign
+    technique: T_benign_torchscript
+    source: "https://huggingface.co/WolfpackArmy/pytorch-pickle-rce-poc"
+    notes: "TorchScript format; not pure pickle VM (analyzer may skip or partial)"
+    expected_globals: []
+
+  # --- Malicious: canonical opcode reference vectors ---
+  - id: mal-global-os-system
+    path: samples/malicious/raw/global_os_system.pkl
+    label: malicious
+    technique: T1_direct_global
+    source: "canonical-poc (PickleBall, HackTricks, OWASP)"
+    notes: "GLOBAL os.system → REDUCE; textbook RCE shape"
+    expected_globals:
+      - { opcode: GLOBAL, module: os, name: system, resolved: true }
+    expected_sink_invocations:
+      - os.system
+    expected_sink_count: 1
+
+  - id: mal-stack-global-literal
+    path: samples/malicious/raw/stack_global_os_system.pkl
+    label: malicious
+    technique: T2_stack_global_literal
+    source: "canonical-poc"
+    notes: "Literal strings on stack before STACK_GLOBAL"
+    expected_globals:
+      - { opcode: STACK_GLOBAL, module: os, name: system, resolved: true }
+    expected_sink_invocations:
+      - os.system
+    expected_sink_count: 1
+
+  - id: mal-stack-global-memo
+    path: samples/malicious/raw/stack_global_memo_indirect.pkl
+    label: malicious
+    technique: T3_memo_indirection
+    source: "canonical-poc"
+    notes: "Module/name restored via PUT/GET memo before STACK_GLOBAL"
+    expected_globals:
+      - { opcode: STACK_GLOBAL, module: os, name: system, resolved: true }
+    expected_sink_invocations:
+      - os.system
+    expected_sink_count: 1
+
+  # --- Malicious: real PyTorch pickle RCE (HuggingFace) ---
+  - id: mal-pytorch-torchsave
+    path: samples/malicious/pytorch/poc_torchsave.pt
+    label: malicious
+    technique: T_pytorch_reduce
+    source: "https://huggingface.co/WolfpackArmy/pytorch-pickle-rce-poc"
+    notes: "torch.save() payload; __reduce__ RCE on torch.load()"
+    expected_globals: []  # gadget via REDUCE, not always os.system GLOBAL
+    expect_no_sinks: false
+    min_reduce_events: 1
+
+  - id: mal-pytorch-statedict
+    path: samples/malicious/pytorch/poc_evil_statedict.pt
+    label: malicious
+    technique: T_pytorch_statedict
+    source: "https://huggingface.co/WolfpackArmy/pytorch-pickle-rce-poc"
+    notes: "Malicious state_dict with embedded pickle payload"
+    expected_globals: []
+    expect_no_sinks: false
+    min_reduce_events: 1
+
+  # --- Malicious: gadget chains (no GLOBAL os.system) ---
+  - id: mal-getattr-import-gadget
+    path: samples/malicious/raw/getattr_import_gadget.pkl
+    label: malicious
+    technique: T4_getattr_import_chain
+    source: canonical-poc
+    notes: "__import__('os') → memo → getattr(...,'system'); no GLOBAL os.system"
+    expected_globals: []
+    expected_sink_invocations:
+      - builtins.getattr
+    expected_sink_count: 1
+    min_reduce_events: 2
+
+  - id: mal-partial-os-system
+    path: samples/malicious/raw/partial_os_system.pkl
+    label: malicious
+    technique: T5_partial_gadget
+    source: canonical-poc
+    notes: "functools.partial(os.system) folded to sink on invoke"
+    expected_globals: []
+    expected_sink_invocations:
+      - os.system
+    min_reduce_events: 2
+
+  - id: mal-global-eval
+    path: samples/malicious/raw/global_eval.pkl
+    label: malicious
+    technique: T6_eval_sink
+    source: canonical-poc
+    notes: "GLOBAL builtins.eval → REDUCE; alternate sink family"
+    expected_globals:
+      - { opcode: GLOBAL, module: builtins, name: eval, resolved: true }
+    expected_sink_invocations:
+      - builtins.eval
+    expected_sink_count: 1
+
+  - id: mal-methodcaller-suspicious
+    path: samples/malicious/raw/methodcaller_suspicious.pkl
+    label: malicious
+    technique: T7_methodcaller_suspicious
+    source: canonical-poc
+    notes: "operator.methodcaller('system', ...) — SUSPICIOUS not SINK"
+    expected_globals: []
+    expect_no_sinks: true
+    min_reduce_events: 1
