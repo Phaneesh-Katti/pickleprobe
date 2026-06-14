@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from polyglot.pvm.emulator import PvmEmulator
+from pickleprobe.pvm.emulator import PvmEmulator
 
 
 class TestPvmEmulator:

@@ -1,0 +1,61 @@
+# PickleProbe security policy — versioned, editable rule pack.
+# SOP: docs/SECURITY_POLICY.md
+
+version: 1
+
+sinks:
+  - { module: os, name: system }
+  - { module: posix, name: system }
+  - { module: nt, name: system }
+  - { module: os, name: popen }
+  - { module: posix, name: popen }
+  - { module: subprocess, name: Popen }
+  - { module: subprocess, name: run }
+  - { module: subprocess, name: call }
+  - { module: subprocess, name: check_output }
+  - { module: builtins, name: eval }
+  - { module: builtins, name: exec }
+  - { module: builtins, name: compile }
+  - { module: __builtin__, name: eval }
+  - { module: __builtin__, name: exec }
+  - { module: pty, name: spawn }
+  - { module: commands, name: getoutput }
+  - { module: runpy, name: run_path }
+
+chain_primitives:
+  - { module: builtins, name: getattr }
+  - { module: builtins, name: setattr }
+  - { module: builtins, name: globals }
+  - { module: builtins, name: __import__ }
+  - { module: operator, name: methodcaller }
+  - { module: operator, name: attrgetter }
+  - { module: operator, name: itemgetter }
+  - { module: functools, name: partial }
+  - { module: importlib, name: import_module }
+  - { module: bdb, name: Bdb }
+  - { module: pdb, name: run }
+
+sensitive_attrs:
+  - system
+  - popen
+  - spawn
+  - exec
+  - eval
+  - Popen
+  - run
+  - call
+  - check_output
+
+# Extension codes are environment-specific; unresolved EXT is SUSPICIOUS.
+extension_codes_suspicious: true
+
+# Precision: memo is a transport mechanism — inherit stored security on load.
+memo_precision:
+  preserve_stored_security: true
+  obfuscation_note_only_when_risky: true
+
+# Memo patterns that raise warnings (adversarial memo analysis).
+memo_warnings:
+  get_before_put: true
+  overwrite_put: true
+  memo_fed_stack_global: true

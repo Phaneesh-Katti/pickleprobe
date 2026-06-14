@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from polyglot.analysis.analyzer import PickleAnalyzer
+from pickleprobe.analysis.analyzer import PickleAnalyzer
 
 
 class TestMemoWarnings:

@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from polyglot.analysis.analyzer import PickleAnalyzer
-from polyglot.domain.cfg import EdgeKind, NodeKind
-from polyglot.domain.security import SecurityTaint
+from pickleprobe.analysis.analyzer import PickleAnalyzer
+from pickleprobe.domain.cfg import EdgeKind, NodeKind
+from pickleprobe.domain.security import SecurityTaint
 
 CORPUS = Path(__file__).resolve().parent / "corpus" / "samples"
 

@@ -1,9 +1,0 @@
-cbuiltins
-__import__
-(S'os'
-tRp0
-cbuiltins
-getattr
-(g0
-S'system'
-tR.

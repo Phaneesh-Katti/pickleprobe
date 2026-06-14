@@ -8,8 +8,8 @@ from typing import Any
 import pytest
 import yaml
 
-from polyglot.analysis.analyzer import PickleAnalyzer
-from polyglot.domain.security import SecurityTaint
+from pickleprobe.analysis.analyzer import PickleAnalyzer
+from pickleprobe.domain.security import SecurityTaint
 
 CORPUS_ROOT = Path(__file__).resolve().parent / "corpus"
 MANIFEST = CORPUS_ROOT / "manifest.yaml"

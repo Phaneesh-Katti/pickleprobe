@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pickle
 
-from polyglot.analysis.analyzer import PickleAnalyzer
+from pickleprobe.analysis.analyzer import PickleAnalyzer
 
 
 class TestProtocol4Containers:

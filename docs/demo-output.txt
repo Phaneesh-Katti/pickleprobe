@@ -1,0 +1,42 @@
+File: tests/corpus/samples/picklescan/malicious15b.pkl  (RAW_PICKLE)
+Size: 134 bytes  |  Max protocol: 4
+CFG: 64 nodes, 123 edges  (1 REDUCE invokes)
+
+Global lookups:
+  @  27  STACK_GLOBAL    bdb.Bdb.run
+  @  37  STACK_GLOBAL    bdb.Bdb
+
+REDUCE invocations:
+  @ 131  bdb.Bdb.run(('<build@96:bdb.Bdb>', 'import os\nos.system("whoami")'))  security=SUSPICIOUS  producer=STACK_GLOBAL@27
+
+BUILD invocations:
+  @  96  BUILD(bdb.Bdb)  security=SUSPICIOUS
+
+NEWOBJ invocations:
+  @  40  NEWOBJ(bdb.Bdb, ())  security=SUSPICIOUS
+
+Findings: 1 SUSPICIOUS invocation(s)
+  WARN @131: bdb.Bdb.run('<build@96:bdb.Bdb>', 'import os\nos.system("whoami")')
+
+Emulation warnings:
+  - memo-fed STACK_GLOBAL at 37: bdb.Bdb (SUSPICIOUS)
+
+--- benign (wolfpack-army/benign_model.pt) ---
+File: tests/corpus/samples/wolfpack-army/benign_model.pt  (PYTORCH_ZIP)
+Size: 326 bytes  |  Max protocol: 2
+CFG: 150 nodes, 287 edges  (6 REDUCE invokes)
+
+Global lookups:
+  @   2  GLOBAL          collections.OrderedDict
+  @  54  GLOBAL          torch._utils._rebuild_tensor_v2
+  @ 105  GLOBAL          torch.FloatStorage
+
+REDUCE invocations:
+  @  30  collections.OrderedDict(())  security=CLEAN  producer=GLOBAL@2
+  @ 171  collections.OrderedDict(())  security=CLEAN  producer=BINGET@168
+  @ 177  torch._utils._rebuild_tensor_v2(("<persid:('storage', GlobalReference(module='torch', name='FloatStorage', taint=<TaintKind.CONST: 1>, opcode='GLOBAL', offset=105, module_source_offset=None, name_source_offset=None), '0', 'cpu', 10)>", 0, (1, 10), (10, 1), False, '<reduce@171>'))  security=INCONCLUSIVE  producer=GLOBAL@54
+  @ 238  collections.OrderedDict(())  security=CLEAN  producer=BINGET@235
+  @ 244  torch._utils._rebuild_tensor_v2(("<persid:('storage', GlobalReference(module='torch', name='FloatStorage', taint=<TaintKind.CONST: 1>, opcode='GLOBAL', offset=105, module_source_offset=None, name_source_offset=None), '1', 'cpu', 1)>", 0, (1,), (1,), False, '<reduce@238>'))  security=INCONCLUSIVE  producer=BINGET@198
+  @ 270  collections.OrderedDict(())  security=CLEAN  producer=BINGET@267
+
+BUILD invocations:

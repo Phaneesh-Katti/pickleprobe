@@ -1,11 +1,11 @@
 # Security policy SOP
 
-Polyglot's sink list and gadget primitives live in **versioned YAML**, not hardcoded Python sets. This is how production scanners (picklescan, Fickling rules) are typically maintained.
+PickleProbe's sink list and gadget primitives live in **versioned YAML**, not hardcoded Python sets. This is how production scanners (picklescan, Fickling rules) are typically maintained.
 
 ## File layout
 
 ```
-src/polyglot/policy/
+src/pickleprobe/policy/
   default.yaml          # bundled default — ship with releases
 ```
 

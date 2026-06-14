@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pickle
 
-from polyglot.analysis.analyzer import PickleAnalyzer
-from polyglot.domain.cfg import NodeKind
-from polyglot.domain.values import TaintKind
+from pickleprobe.analysis.analyzer import PickleAnalyzer
+from pickleprobe.domain.cfg import NodeKind
+from pickleprobe.domain.values import TaintKind
 
 
 # Classic direct GLOBAL RCE shape (never call pickle.load on untrusted input).

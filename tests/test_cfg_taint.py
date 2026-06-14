@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from polyglot.analysis.analyzer import PickleAnalyzer
-from polyglot.domain.security import SecurityTaint
+from pickleprobe.analysis.analyzer import PickleAnalyzer
+from pickleprobe.domain.security import SecurityTaint
 
 MALICIOUS_GLOBAL = b"cos\nsystem\n(S'echo pwned'\ntR."
 

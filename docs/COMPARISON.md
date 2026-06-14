@@ -1,52 +1,41 @@
-# Polyglot vs naive GLOBAL scanner
+# PickleProbe vs naive GLOBAL scanner vs picklescan
 
-Comparison on the curated corpus in `tests/corpus/manifest.yaml`.
+Comparison on the real-world manifest in `tests/corpus/manifest.yaml` (12 samples from WolfpackArmy, Rodion111, picklescan).
 
 ## Scanners
 
 | Scanner | What it checks |
 |---------|----------------|
-| **Naive GLOBAL** | `pickletools.genops` → only `GLOBAL` opcode args matching known `(module, name)` sink pairs |
-| **Polyglot** | Full PVM emulation: `GLOBAL`, `STACK_GLOBAL`, `REDUCE`, `BUILD`, `NEWOBJ`, memo indirection, gadget folding (`getattr` → `os.system`) |
+| **Naive GLOBAL** | `pickletools.genops` → only `GLOBAL` opcode args matching known sink pairs |
+| **PickleProbe** | PVM emulation: `GLOBAL`, `STACK_GLOBAL`, `REDUCE`, `BUILD`, `NEWOBJ`, memo, gadget folding |
+| **picklescan** | Production blocklist over globals/imports (install separately) |
 
-## Results (11 manifest samples)
-
-| Sample | Label | Naive sinks | Polyglot sinks | Gap |
-|--------|-------|-------------|----------------|-----|
-| benign-datetime-p0 | benign | 0 | 0 | clean |
-| benign-dict-p4 | benign | 0 | 0 | clean |
-| benign-tuple-p2 | benign | 0 | 0 | clean |
-| benign-newobj-build-p2 | benign | 0 | 0 | clean |
-| benign-pytorch-model | benign | 0 | 0 | clean |
-| benign-pytorch-torchscript | benign | 0 | 0 | clean |
-| mal-global-os-system | malicious | 1 | 1 | both |
-| mal-stack-global-literal | malicious | 0 | 1 | **polyglot-only** |
-| mal-stack-global-memo | malicious | 0 | 1 | **polyglot-only** |
-| mal-pytorch-torchsave | malicious | 1 | 1 | both |
-| mal-pytorch-statedict | malicious | 1 | 1 | both |
-
-Regenerate this table:
+## Regenerate tables
 
 ```bash
-./polyglot/bin/python scripts/benchmark_corpus.py
+python scripts/benchmark_corpus.py
+python scripts/compare_picklescan.py   # pip install picklescan
 ```
 
-## Takeaways
+## Takeaways (PickleProbe vs naive GLOBAL)
 
-1. **STACK_GLOBAL bypasses naive GLOBAL grep** — module/name come from stack strings, not a `GLOBAL` opcode arg. Polyglot resolves them via PVM simulation.
-2. **Memo indirection** — same attack with `PUT`/`GET` restoring strings before `STACK_GLOBAL`; still invisible to GLOBAL-only scanning.
-3. **PyTorch `.pt` files** — Polyglot unwraps ZIP archives and analyzes inner `*.pkl` streams (`formats.loader`).
-4. **BUILD / NEWOBJ** — Polyglot records `__setstate__` / `__dict__` updates and `cls.__new__` sites with `INSTANCE_FLOW` / `STATE_FLOW` CFG edges (no extra detections on this small corpus yet, but required for state-based gadgets).
-5. **Gadget chains** — `getattr(__import__('os'), 'system')` has no `GLOBAL os system`; covered by REDUCE folding tests (`test_reduce_analysis.py`).
+1. **`STACK_GLOBAL` bypasses GLOBAL grep** — e.g. `picklescan/malicious15b.pkl` (`bdb.Bdb.run`), `rodion111/malicious.pt2` (`subprocess.check_output`).
+2. **PyTorch ZIP** — inner `data.pkl` streams analyzed via `formats.loader`.
+3. **Debugger gadgets** — `bdb`/`pdb` chain primitives align with picklescan/HF blocklist extensions.
+4. **Real PoCs only** — corpus is downloaded from published HF repos and picklescan `tests/data`, not synthetic opcode vectors.
+
+## picklescan comparison
+
+When `picklescan` is installed, `scripts/compare_picklescan.py` runs both tools on each manifest file. Expect agreement on obvious `eval` chains; divergences on STACK_GLOBAL-heavy samples illustrate why PVM simulation matters.
 
 ## Corpus coverage
 
-- **5/5 malicious** samples on disk detected by Polyglot.
-- **2/5 malicious** missed by naive GLOBAL scanner (both STACK_GLOBAL techniques).
-- Benign samples: no false SINK flags.
+- Malicious samples: WolfpackArmy `.pt`, Rodion111 `.pt2`, picklescan regression set.
+- Benign samples: WolfpackArmy controls + picklescan `benign0_v4.pkl` + small `pytorch_model.bin`.
+- Full PickleBall (336 models): optional Zenodo download — not required for CI.
 
-Fetch missing HuggingFace `.pt` samples:
+Fetch corpus:
 
 ```bash
-./scripts/fetch_curated_corpus.sh
+./scripts/fetch_corpus.sh
 ```

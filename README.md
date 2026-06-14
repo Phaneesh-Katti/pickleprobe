@@ -1,54 +1,125 @@
-# Polyglot
+# PickleProbe
 
-Static analyzer for Python pickle bytecode. Inspects serialized objects **without** calling `pickle.load()`, using `pickletools` opcode disassembly plus a partial Pickle Virtual Machine (PVM) emulator.
+Static analyzer for Python pickle bytecode in ML supply-chain artifacts. Inspects serialized objects **without** calling `pickle.load()`, using `pickletools` disassembly plus a partial Pickle Virtual Machine (PVM) emulator.
+
+> **GitHub:** [github.com/Phaneesh-Katti/pickleprobe](https://github.com/Phaneesh-Katti/pickleprobe) — *static pickle bytecode probe for ML artifact security*
+
+Alternative names considered: **Brine** (pickle pun), **PVMScope** (technical). PickleProbe avoids collision with Fickling’s unrelated `polyglot` submodule.
+
+## Quick demo
+
+Malicious (`picklescan/malicious15b.pkl` — real HF scanner corpus):
+
+```
+Findings: 1 SUSPICIOUS invocation(s)
+  WARN @131: bdb.Bdb.run(..., 'import os\nos.system("whoami")')
+Memo warnings:
+  - memo-fed STACK_GLOBAL at 37: bdb.Bdb (SUSPICIOUS)
+```
+
+Benign (`wolfpack-army/benign_model.pt`): no SINK/SUSPICIOUS invocations.
+
+Full output: [docs/demo-output.txt](docs/demo-output.txt)
 
 ## Current scope
 
-- **PVM emulation**: stack, memo, protocol 0–5 opcodes including `SETITEMS`/`APPENDS`/`ADDITEMS`, `EXT*`, `INST`/`OBJ`, `PERSID`
-- **Security policy**: versioned YAML rule pack (`src/polyglot/policy/default.yaml`) — see [docs/SECURITY_POLICY.md](docs/SECURITY_POLICY.md)
-- **Invocation analysis**: `GLOBAL`, `STACK_GLOBAL`, `REDUCE`, `BUILD`, `NEWOBJ` with gadget folding (`getattr`, `partial`, `methodcaller`, …)
-- **CFG + taint propagation**: dataflow edges and exploit path reporting
-- **Formats**: raw pickle and PyTorch `.pt` ZIP extraction
-- **Memo adversarial checks**: GET-before-PUT, overwrite PUT, memo-fed `STACK_GLOBAL`
+- **PVM emulation**: stack, memo, protocol 0–5 opcodes (`SETITEMS`/`APPENDS`, `EXT*`, `INST`/`OBJ`, …)
+- **Security policy**: YAML rule pack (`src/pickleprobe/policy/default.yaml`) — [`--policy` flag](docs/SECURITY_POLICY.md)
+- **Invocation analysis**: `GLOBAL`, `STACK_GLOBAL`, `REDUCE`, `BUILD`, `NEWOBJ`, gadget folding
+- **CFG + taint**: dataflow edges and exploit path reporting
+- **Formats**: raw pickle, PyTorch `.pt` ZIP, `.bin`, `.pt2` byte streams
+- **Memo checks**: GET-before-PUT, overwrite PUT, memo-fed `STACK_GLOBAL`
 
-## Project layout
+## vs the field
 
-```
-src/polyglot/
-  domain/       Values, CFG, security policy loader
-  policy/       default.yaml rule pack
-  pvm/          Pickle VM emulator
-  analysis/     Analyzer, CFG taint propagation
-  formats/      PyTorch ZIP / raw pickle loading
-  cli.py        Command-line entry point
-tests/corpus/   Curated samples + manifest.yaml
-docs/           SECURITY_POLICY.md, COMPARISON.md
-```
+| Tool | Role | PickleProbe |
+|------|------|-------------|
+| [picklescan](https://github.com/mmaitre314/picklescan) | Production HF Hub scanner | — |
+| [Fickling](https://github.com/trailofbits/fickling) | Decompile + sanitize | — |
+| [PickleBall](https://github.com/columbia/pickleball) | Research policy enforcement | — |
+| **PickleProbe** | Learn/teach bytecode + CFG + honest eval | **this repo** |
+
+## Non-goals
+
+- Not production-ready — no sanitization, SARIF, or Hub integration
+- Partial PVM — some opcodes/layouts approximate stack only
+- Small real corpus (~12 KB) — not full PickleBall 336-model sweep
+- Static analysis only — findings are advisory
+
+See [docs/DESIGN.md](docs/DESIGN.md) for architecture and an exploit walkthrough.
 
 ## Setup
 
 ```bash
-python3 -m venv polyglot
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+If you still use the existing `polyglot/` venv from earlier setup:
+
+```bash
 source polyglot/bin/activate
 pip install -e ".[dev]"
 ```
 
 ## Usage
 
+The `pickleprobe` command is installed **inside your venv**, not globally. Either activate the venv first, or call the venv binary directly:
+
 ```bash
-polyglot analyze path/to/suspicious.pkl
-polyglot analyze path/to/model.pt --json
+# after: source .venv/bin/activate  (or source polyglot/bin/activate)
+pickleprobe analyze path/to/suspicious.pkl
+pickleprobe analyze path/to/model.pt --json
+pickleprobe analyze model.pt --policy custom.yaml
+
+# without activating the venv:
+./.venv/bin/pickleprobe analyze tests/corpus/samples/picklescan/malicious15b.pkl
+# or (legacy venv folder name):
+./polyglot/bin/pickleprobe analyze tests/corpus/samples/picklescan/malicious15b.pkl
 ```
 
-Exit codes: `0` clean, `1` suspicious/inconclusive findings, `2` SINK detected.
+Exit codes: `0` clean, `1` suspicious/inconclusive, `2` SINK detected.
 
-## Run tests
+### Library API
 
-```bash
-pytest
-python scripts/benchmark_corpus.py
+```python
+from pickleprobe.analysis.analyzer import PickleAnalyzer
+
+report = PickleAnalyzer(policy_path="custom.yaml").analyze_file("model.pt").primary
+print(report.sink_invocations, report.exploit_paths)
 ```
 
 ## Evaluation corpus
 
-See [tests/corpus/README.md](tests/corpus/README.md). Refresh with `./scripts/fetch_curated_corpus.sh`.
+**Real datasets only** — WolfpackArmy HF, Rodion111 PoC, picklescan reference tests. No synthetic eval bytes.
+
+```bash
+./scripts/fetch_corpus.sh          # ~12 KB, 12 files
+python scripts/benchmark_corpus.py
+python scripts/compare_picklescan.py   # needs: pip install picklescan
+```
+
+See [tests/corpus/README.md](tests/corpus/README.md). Optional full PickleBall: `./scripts/download_corpus.sh`.
+
+## Tests & CI
+
+```bash
+pytest -q
+```
+
+GitHub Actions runs `pytest` + `benchmark_corpus.py` on Python 3.10 and 3.12.
+
+## Project layout
+
+```
+src/pickleprobe/
+  domain/       Values, CFG, security policy
+  policy/       default.yaml rule pack
+  pvm/          Pickle VM emulator
+  analysis/     Analyzer, CFG taint
+  formats/      PyTorch ZIP / raw pickle loading
+  cli.py        CLI entry point
+tests/corpus/   Real samples + manifest.yaml
+docs/           DESIGN.md, SECURITY_POLICY.md, COMPARISON.md
+```

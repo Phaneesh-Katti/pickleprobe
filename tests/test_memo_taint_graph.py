@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pickle
 
-from polyglot.analysis.analyzer import PickleAnalyzer
-from polyglot.domain.cfg import EdgeKind, NodeKind
-from polyglot.domain.security import SecurityTaint
+from pickleprobe.analysis.analyzer import PickleAnalyzer
+from pickleprobe.domain.cfg import EdgeKind, NodeKind
+from pickleprobe.domain.security import SecurityTaint
 
 MEMO_ATTACK = (
     b"S'os'\n"

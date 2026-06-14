@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from polyglot.domain.policy import load_policy
-from polyglot.domain.security import SecurityTaint, classify_global
+from pickleprobe.domain.policy import load_policy
+from pickleprobe.domain.security import SecurityTaint, classify_global
 
 
 def test_default_policy_loads() -> None:

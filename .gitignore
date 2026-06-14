@@ -1,5 +1,5 @@
-/polyglot/
-src/polyglot.egg-info/
+.venv/
+src/pickleprobe.egg-info/
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -22,6 +22,12 @@ CLAUDE.md
 !tests/corpus/samples/**/*.pt
 *.pth
 !tests/corpus/samples/**/*.pth
+*.pt2
+!tests/corpus/samples/**/*.pt2
+*.bin
+!tests/corpus/samples/**/*.bin
+*.pickle
+!tests/corpus/samples/**/*.pickle
 
 # Optional full-scale archives (not in repo)
 tests/corpus/archives/

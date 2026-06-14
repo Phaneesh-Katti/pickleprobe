@@ -1,53 +1,39 @@
-# Curated evaluation corpus
+# Evaluation corpus
 
-Hand-picked, **~80 KB total** — no multi-GB PickleBall download. Every sample is chosen to teach or test one specific analyzer capability.
+**Real published datasets only** — no hand-crafted or `pickle.dumps()` evaluation samples in this repo.
 
-## Why these samples (not the full archive)
-
-| Goal | Samples |
-|------|---------|
-| Opcode coverage (protocol 4+) | `list_protocol4`, `set_protocol4`, `dict_protocol4` |
-| BUILD / NEWOBJ | `newobj_build_protocol2` |
-| Direct GLOBAL sink | `global_os_system`, `global_eval` |
-| STACK_GLOBAL evasion | `stack_global_os_system` |
-| Memo indirection | `stack_global_memo_indirect` |
-| Gadget chains (no `GLOBAL os.system`) | `getattr_import_gadget`, `partial_os_system` |
-| Suspicious-only primitive | `methodcaller_suspicious` |
-| Real PyTorch ZIP payloads | WolfpackArmy HF PoCs (~1–4 KB each) |
-| Benign ML-adjacent | `benign_model.pt`, `benign_torchscript.pt` |
-
-**Total: 17 samples** — enough for CI and portfolio demos, not a research dataset.
-
-## Refresh
+Total tracked size: **~12 KB** (12 files). Refresh anytime:
 
 ```bash
-./scripts/fetch_curated_corpus.sh
+./scripts/fetch_corpus.sh
 ```
 
-Downloads HF `.pt` files (~10 KB) and regenerates raw `.pkl` vectors.
+## Sources
+
+| Source | Files | Why included |
+|--------|-------|--------------|
+| [WolfpackArmy HF PoC](https://huggingface.co/WolfpackArmy/pytorch-pickle-rce-poc) | 4× `.pt` | Canonical PyTorch pickle RCE research repo |
+| [Rodion111 .pt2 ACE](https://huggingface.co/Rodion111/pytorch-pt2-ace-poc) | 1× `.pt2` | Real `weights_only` fallback bypass PoC |
+| [picklescan tests/data](https://github.com/mmaitre314/picklescan/tree/main/tests/data) | 7× mixed | HF Hub scanner reference corpus |
+
+## What we deliberately exclude
+
+- Hand-written `cos\nsystem\n` opcode vectors
+- Locally generated `pickle.dumps()` fixtures
+- Fickling `inject_*.py` outputs (synthetic until run)
+- Full [PickleBall Zenodo](https://zenodo.org/records/16974645) archives (~19 GB) — optional via `./scripts/download_corpus.sh`
 
 ## Safety
 
-Never `pickle.load()` or `torch.load(weights_only=False)` on `malicious/` files outside an isolated VM. Polyglot analyzes them statically only.
+Never `pickle.load()` or `torch.load(weights_only=False)` on malicious samples outside an isolated VM. PickleProbe analyzes them statically only.
 
-## Sample index
+## Manifest
 
-See `manifest.yaml` for labels, techniques, and expected findings per file.
-
-| ID | Size class | Technique |
-|----|------------|-----------|
-| benign-datetime-p0 | tiny | stdlib GLOBAL |
-| benign-dict/list/set-p4 | tiny | protocol-4 containers |
-| benign-newobj-build-p2 | tiny | NEWOBJ + BUILD |
-| benign-pytorch-* | small | real HF controls |
-| mal-global-* | tiny | direct sinks |
-| mal-stack-global-* | tiny | lookup obfuscation |
-| mal-getattr/partial | tiny | gadget chains |
-| mal-methodcaller | tiny | suspicious tier |
-| mal-pytorch-* | small | real HF PoCs |
+Ground truth and expected findings: `manifest.yaml` (version 3, 12 samples).
 
 ## Optional full PickleBall
 
 ```bash
-./scripts/download_corpus_monitored.sh   # ~19 GB — not required
+./scripts/download_corpus.sh --source-only   # 6 MB tool source
+./scripts/download_corpus.sh                 # full ~19 GB archives (local only, gitignored)
 ```

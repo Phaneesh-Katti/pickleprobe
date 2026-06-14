@@ -1,5 +1,5 @@
 [project]
-name = "polyglot"
+name = "pickleprobe"
 version = "0.1.0"
 description = "Static analyzer for Python pickle bytecode"
 readme = "README.md"
@@ -7,10 +7,10 @@ requires-python = ">=3.10"
 dependencies = ["pyyaml>=6.0"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0"]
+dev = ["pytest>=7.0", "ruff>=0.4"]
 
 [project.scripts]
-polyglot = "polyglot.cli:main"
+pickleprobe = "pickleprobe.cli:main"
 
 [build-system]
 requires = ["setuptools>=61"]
@@ -20,8 +20,11 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-polyglot = ["policy/*.yaml"]
+pickleprobe = ["policy/*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["E402"]

@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from polyglot.analysis.analyzer import PickleAnalyzer
-from polyglot.domain.security import SecurityTaint
-from polyglot.formats.loader import FileFormat, detect_format, extract_streams, load_file
+from pickleprobe.analysis.analyzer import PickleAnalyzer
+from pickleprobe.domain.security import SecurityTaint
+from pickleprobe.formats.loader import FileFormat, detect_format, extract_streams, load_file
 
 MALICIOUS_GLOBAL = b"cos\nsystem\n(S'echo pwned'\ntR."
 CORPUS = Path(__file__).resolve().parent / "corpus" / "samples"
@@ -55,7 +55,7 @@ class TestZipExtraction:
         assert report.sink_invocations[0].invocation_security is SecurityTaint.SINK
 
     def test_load_file_round_trip(self) -> None:
-        path = CORPUS / "malicious/raw/global_os_system.pkl"
+        path = CORPUS / "picklescan/malicious0.pkl"
         loaded = load_file(path)
         assert loaded.format is FileFormat.RAW_PICKLE
         assert len(loaded.streams) == 1

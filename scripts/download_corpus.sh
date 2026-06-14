@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # OPTIONAL: full PickleBall Zenodo archives (~19 GB).
-# For day-to-day dev use scripts/fetch_curated_corpus.sh instead (~12 KB).
-# Archives are kept compressed; Polyglot will support reading them directly later.
+# Day-to-day eval uses scripts/fetch_corpus.sh (~12 KB real samples).
+# Archives are kept compressed; PickleProbe will support reading them directly later.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare Polyglot vs a naive GLOBAL-only sink scanner on the corpus manifest."""
+"""Compare PickleProbe vs a naive GLOBAL-only sink scanner on the corpus manifest."""
 
 from __future__ import annotations
 
@@ -13,10 +13,10 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from polyglot.analysis.analyzer import PickleAnalyzer
-from polyglot.formats.loader import load_file
+from pickleprobe.analysis.analyzer import PickleAnalyzer
+from pickleprobe.formats.loader import load_file
 
-from polyglot.domain.policy import get_policy
+from pickleprobe.domain.policy import get_policy
 
 CORPUS = ROOT / "tests" / "corpus"
 MANIFEST = CORPUS / "manifest.yaml"
@@ -31,10 +31,10 @@ class Row:
     technique: str
     present: bool
     naive_globals: int
-    polyglot_sinks: int
-    polyglot_suspicious: int
-    polyglot_reduces: int
-    polyglot_detected: bool
+    pickleprobe_sinks: int
+    pickleprobe_suspicious: int
+    pickleprobe_reduces: int
+    pickleprobe_detected: bool
     naive_detected: bool
     gap: str
 
@@ -67,7 +67,7 @@ def gap_note(label: str, naive_hit: bool, poly_hit: bool) -> str:
     if naive_hit and poly_hit:
         return "both"
     if poly_hit and not naive_hit:
-        return "polyglot-only"
+        return "pickleprobe-only"
     if naive_hit and not poly_hit:
         return "naive-only (unexpected)"
     if label == "malicious":
@@ -99,9 +99,16 @@ def main() -> int:
             and entry.get("expect_no_sinks") is False
             and poly_suspicious > 0
         )
-        # For malicious samples that use REDUCE gadgets, polyglot detection = any sink OR suspicious+reduce
+        # For malicious samples that use REDUCE gadgets, pickleprobe detection = any sink OR suspicious+reduce
         if present and entry.get("label") == "malicious":
-            poly_hit = poly_sinks > 0 or (poly_suspicious > 0 and poly_reduces > 0)
+            poly_hit = (
+                poly_sinks > 0
+                or (poly_suspicious > 0 and poly_reduces > 0)
+                or (
+                    poly_reduces >= entry.get("min_reduce_events", 1)
+                    and any(ref.is_resolved for ref in report.global_refs)
+                )
+            )
 
         rows.append(
             Row(
@@ -110,10 +117,10 @@ def main() -> int:
                 technique=entry.get("technique", ""),
                 present=present,
                 naive_globals=len(naive_globals),
-                polyglot_sinks=poly_sinks,
-                polyglot_suspicious=poly_suspicious,
-                polyglot_reduces=poly_reduces,
-                polyglot_detected=poly_hit,
+                pickleprobe_sinks=poly_sinks,
+                pickleprobe_suspicious=poly_suspicious,
+                pickleprobe_reduces=poly_reduces,
+                pickleprobe_detected=poly_hit,
                 naive_detected=naive_hit,
                 gap=gap_note(entry["label"], naive_hit, poly_hit) if present else "missing",
             )
@@ -123,20 +130,20 @@ def main() -> int:
     print("-" * 80)
     for r in rows:
         print(
-            f"{r.sample_id:<28} {r.label:<10} {r.naive_globals:>5} {r.polyglot_sinks:>5}"
+            f"{r.sample_id:<28} {r.label:<10} {r.naive_globals:>5} {r.pickleprobe_sinks:>5}"
             f" {r.gap:<18} {'yes' if r.present else 'no'}"
         )
 
     present_rows = [r for r in rows if r.present]
     mal = [r for r in present_rows if r.label == "malicious"]
-    poly_only = [r for r in mal if r.gap == "polyglot-only"]
+    poly_only = [r for r in mal if r.gap == "pickleprobe-only"]
     missed = [r for r in mal if r.gap == "missed"]
 
     print()
     print(f"Samples in manifest: {len(rows)}")
     print(f"On disk: {len(present_rows)}")
     print(f"Malicious on disk: {len(mal)}")
-    print(f"Polyglot-only detections (naive GLOBAL missed): {len(poly_only)}")
+    print(f"PickleProbe-only detections (naive GLOBAL missed): {len(poly_only)}")
     if poly_only:
         for r in poly_only:
             print(f"  - {r.sample_id} ({r.technique})")
