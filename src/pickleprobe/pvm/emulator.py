@@ -90,6 +90,10 @@ class EmulationResult:
     memo_overwrites: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     max_protocol: int = -1
+    max_stack_depth: int = 0
+    gadget_hop_cap: int = 0
+    gadget_iterations: int = 0
+    stack_unreliable_from: int | None = None
 
 
 class PvmEmulator:
@@ -108,6 +112,7 @@ class PvmEmulator:
                     pos = -1
 
                 result.max_protocol = max(result.max_protocol, opcode.proto)
+                result.max_stack_depth = max(result.max_stack_depth, len(stack))
 
                 if opcode.name in _NOOP_OPCODES:
                     if opcode.name == "MEMOIZE" and stack:
@@ -781,6 +786,7 @@ class PvmEmulator:
             instance_producer_offset=instance_cell.producer_offset,
             instance_producer_kind=instance_cell.producer_kind,
             state_security=state_cell.security,
+            state_value=state_cell.value,
             state_producer_refs=state_cell.source_refs,
             invocation_security=invocation_security,
         )
@@ -898,6 +904,8 @@ class PvmEmulator:
         num_pop = len(before)
         if num_pop and before[-1].name == "stackslice":
             result.errors.append(f"unhandled opcode with stackslice: {opcode.name}")
+            if result.stack_unreliable_from is None:
+                result.stack_unreliable_from = getattr(opcode, "offset", None) or -1
             return
 
         if len(stack) < num_pop:

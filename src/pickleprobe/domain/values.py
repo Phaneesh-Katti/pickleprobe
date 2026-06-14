@@ -121,6 +121,7 @@ class BuildEvent:
     instance_producer_offset: int | None
     instance_producer_kind: str | None
     state_security: SecurityTaint
+    state_value: Any = None
     state_producer_refs: FrozenSet[ValueRef] = field(default_factory=frozenset)
     invocation_security: SecurityTaint = SecurityTaint.CLEAN
 

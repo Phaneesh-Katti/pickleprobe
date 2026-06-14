@@ -8,6 +8,29 @@ import sys
 from pathlib import Path
 
 from pickleprobe.analysis.analyzer import FileAnalysisResult, PickleAnalyzer
+from pickleprobe.analysis.batch import ScanSummaryRow, iter_scan_targets, summarize_reports
+from pickleprobe.reporting.sarif import file_results_to_sarif
+
+
+def _json_arg(value: object) -> object:
+    from pickleprobe.domain.values import GlobalReference
+
+    if isinstance(value, GlobalReference):
+        return {
+            "module": value.module,
+            "name": value.name,
+            "qualified_name": value.qualified_name,
+            "resolved": value.is_resolved,
+        }
+    if isinstance(value, tuple):
+        return [_json_arg(v) for v in value]
+    if isinstance(value, list):
+        return [_json_arg(v) for v in value]
+    if isinstance(value, dict):
+        return {str(k): _json_arg(v) for k, v in value.items()}
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return repr(value)
 
 
 def _report_to_dict(report: object) -> dict:
@@ -40,7 +63,7 @@ def _report_to_dict(report: object) -> dict:
                     "kind": ev.callable_producer_kind,
                     "offset": ev.callable_producer_offset,
                 },
-                "args": list(ev.args) if ev.args is not None else None,
+                "args": list(_json_arg(ev.args)) if ev.args is not None else None,
                 "args_security": ev.args_security.name,
                 "args_producers": [
                     {"kind": r.kind, "offset": r.offset} for r in sorted(
@@ -69,11 +92,14 @@ def _report_to_dict(report: object) -> dict:
                 "opcode": ev.opcode,
                 "class": ev.class_qualified,
                 "class_security": ev.class_security.name,
-                "args": list(ev.args) if ev.args is not None else None,
+                "args": list(_json_arg(ev.args)) if ev.args is not None else None,
                 "invocation_security": ev.invocation_security.name,
             }
             for ev in report.newobj_events
         ],
+        "stack_unreliable_from": report.stack_unreliable_from,
+        "gadget_hop_cap": report.gadget_hop_cap,
+        "gadget_iterations": report.gadget_iterations,
         "findings": {
             "sink_invocations": len(report.sink_invocations),
             "suspicious_invocations": len(report.suspicious_invocations),
@@ -220,6 +246,147 @@ def _print_human(report: object, *, stream_label: str | None = None) -> None:
             print(f"  - {err}")
 
 
+def _verdict_line(exit_code: int) -> str:
+    if exit_code == 0:
+        return "Verdict: CLEAN (exit 0)"
+    if exit_code == 2:
+        return "Verdict: SINK detected (exit 2)"
+    return "Verdict: SUSPICIOUS (exit 1)"
+
+
+def _exit_code_note(exit_code: int) -> str:
+    if exit_code == 0:
+        return "No policy violations; shell exit 0."
+    return (
+        "Analysis finished successfully — non-zero exit is intentional for CI/scripts "
+        "(see README: 0=clean, 1=suspicious, 2=sink)."
+    )
+
+
+def _exit_code_for_reports(reports: list) -> int:
+    code = 0
+    for report in reports:
+        if report.sink_invocations:
+            code = 2
+        elif report.has_findings and code == 0:
+            code = 1
+    return code
+
+
+def _exit_code_for_result(result: FileAnalysisResult) -> int:
+    return _exit_code_for_reports(result.streams)
+
+
+def _print_scan_summary(rows: list[ScanSummaryRow]) -> None:
+    print(f"{'target':<56} {'sinks':>5} {'warn':>5} {'bytes':>10} {'exit':>4}")
+    for row in rows:
+        if row.error:
+            print(f"{row.target:<56} {'ERR':>5} {'':>5} {'':>10} {'':>4}  {row.error}")
+            continue
+        print(
+            f"{row.target:<56} {row.sinks:>5} {row.suspicious:>5} "
+            f"{row.bytes_analyzed:>10} {row.exit_code:>4}"
+        )
+    worst = max((r.exit_code for r in rows if not r.error), default=0)
+    print()
+    print(_verdict_line(worst))
+    print(_exit_code_note(worst))
+
+
+def _run_streaming_scan(
+    analyzer: PickleAnalyzer,
+    root: Path,
+    *,
+    recursive: bool,
+    archive_members: bool,
+    limit: int | None,
+    max_member_bytes: int | None,
+    progress: bool,
+) -> tuple[list[ScanSummaryRow], list[FileAnalysisResult], int]:
+    rows: list[ScanSummaryRow] = []
+    file_results: list[FileAnalysisResult] = []
+    exit_code = 0
+    index = 0
+
+    for target in iter_scan_targets(
+        root,
+        recursive=recursive,
+        archive_members=archive_members,
+        limit=limit,
+        max_member_bytes=max_member_bytes,
+    ):
+        index += 1
+        try:
+            reports = analyzer.analyze_target(target.path, member=target.member)
+            sinks, suspicious, risky_builds, nbytes = summarize_reports(reports)
+            code = _exit_code_for_reports(reports)
+            row = ScanSummaryRow(
+                target=target.label,
+                sinks=sinks,
+                suspicious=suspicious,
+                risky_builds=risky_builds,
+                streams=len(reports),
+                exit_code=code,
+                bytes_analyzed=nbytes,
+            )
+            if target.member is None:
+                from pickleprobe.formats.loader import load_file
+
+                loaded = load_file(target.path)
+                file_results.append(
+                    FileAnalysisResult(path=target.path, format=loaded.format, streams=reports)
+                )
+            else:
+                from pickleprobe.formats.loader import FileFormat
+
+                file_results.append(
+                    FileAnalysisResult(
+                        path=target.path,
+                        format=FileFormat.TAR_GZ_ARCHIVE,
+                        streams=reports,
+                    )
+                )
+        except OSError as exc:
+            row = ScanSummaryRow(
+                target=target.label,
+                sinks=0,
+                suspicious=0,
+                risky_builds=0,
+                streams=0,
+                exit_code=0,
+                bytes_analyzed=0,
+                error=str(exc),
+            )
+            code = 0
+        except Exception as exc:  # noqa: BLE001 — batch scan should continue
+            row = ScanSummaryRow(
+                target=target.label,
+                sinks=0,
+                suspicious=0,
+                risky_builds=0,
+                streams=0,
+                exit_code=0,
+                bytes_analyzed=0,
+                error=str(exc),
+            )
+            code = 0
+
+        rows.append(row)
+        exit_code = max(exit_code, code)
+        if progress:
+            prefix = f"[{index}] "
+            if row.error:
+                print(f"{prefix}{row.target}  ERROR  {row.error}", flush=True)
+            else:
+                print(
+                    f"{prefix}{row.target}  sinks={row.sinks} suspicious={row.suspicious} "
+                    f"bytes={row.bytes_analyzed} exit={row.exit_code}",
+                    flush=True,
+                )
+
+    return rows, file_results, exit_code
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="pickleprobe",
@@ -241,19 +408,70 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to custom security policy YAML (default: bundled default.yaml)",
     )
 
+    analyze.add_argument(
+        "--sarif",
+        action="store_true",
+        help="Emit SARIF 2.1.0 JSON (implies --json structure for single-file runs)",
+    )
+
+    analyze.add_argument(
+        "--member",
+        default=None,
+        help="Analyze one member inside a .tar.gz archive (e.g. ours/call_system.pkl)",
+    )
+
+    scan = sub.add_parser("scan", help="Batch-analyze files in a directory or one file")
+    scan.add_argument("path", type=Path, help="File or directory to scan")
+    scan.add_argument(
+        "-r",
+        "--recursive",
+        action="store_true",
+        help="Recurse into subdirectories when path is a directory",
+    )
+    scan.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Stop after N targets (files or archive members)",
+    )
+    scan.add_argument(
+        "--max-member-mb",
+        type=int,
+        default=64,
+        help="Skip archive members larger than this many MiB (default: 64)",
+    )
+    scan.add_argument(
+        "--no-archive-members",
+        action="store_true",
+        help="Treat .tar.gz as one blob instead of per-member scans",
+    )
+    scan.add_argument(
+        "--progress",
+        action="store_true",
+        help="Print one result line per target as analysis completes",
+    )
+    scan.add_argument("--json", action="store_true", help="Emit machine-readable JSON summary")
+    scan.add_argument("--sarif", action="store_true", help="Emit SARIF 2.1.0 JSON")
+    scan.add_argument("--policy", type=Path, default=None, help="Custom security policy YAML")
+
     args = parser.parse_args(argv)
 
     if args.command == "analyze":
         analyzer = PickleAnalyzer(policy_path=args.policy)
-        result = analyzer.analyze_file(args.path)
-        exit_code = 0
-        for report in result.streams:
-            if report.sink_invocations:
-                exit_code = 2
-            elif report.has_findings and exit_code == 0:
-                exit_code = 1
+        if args.member:
+            reports = analyzer.analyze_target(args.path, member=args.member)
+            from pickleprobe.formats.loader import FileFormat
 
-        if args.json:
+            result = FileAnalysisResult(
+                path=args.path, format=FileFormat.TAR_GZ_ARCHIVE, streams=reports
+            )
+        else:
+            result = analyzer.analyze_file(args.path)
+        exit_code = _exit_code_for_result(result)
+
+        if args.sarif:
+            print(json.dumps(file_results_to_sarif([result]), indent=2))
+        elif args.json:
             print(json.dumps(_file_result_to_dict(result), indent=2))
         else:
             print(f"File: {result.path}  ({result.format.name})")
@@ -265,6 +483,62 @@ def main(argv: list[str] | None = None) -> int:
                 _print_human(report, stream_label=label)
                 if len(result.streams) > 1:
                     print("---")
+            print()
+            print(_verdict_line(exit_code))
+            print(_exit_code_note(exit_code))
+        return exit_code
+
+    if args.command == "scan":
+        analyzer = PickleAnalyzer(policy_path=args.policy)
+        max_bytes = None if args.max_member_mb <= 0 else args.max_member_mb * 1024 * 1024
+        try:
+            rows, file_results, exit_code = _run_streaming_scan(
+                analyzer,
+                args.path,
+                recursive=args.recursive,
+                archive_members=not args.no_archive_members,
+                limit=args.limit,
+                max_member_bytes=max_bytes,
+                progress=args.progress,
+            )
+        except FileNotFoundError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+        if not rows:
+            print(f"No targets under {args.path}", file=sys.stderr)
+            return 1
+
+        if args.sarif:
+            print(json.dumps(file_results_to_sarif(file_results), indent=2))
+        elif args.json:
+            print(
+                json.dumps(
+                    {
+                        "root": str(args.path),
+                        "target_count": len(rows),
+                        "exit_code": exit_code,
+                        "targets": [
+                            {
+                                "target": r.target,
+                                "sinks": r.sinks,
+                                "suspicious": r.suspicious,
+                                "risky_builds": r.risky_builds,
+                                "bytes_analyzed": r.bytes_analyzed,
+                                "exit_code": r.exit_code,
+                                "error": r.error,
+                            }
+                            for r in rows
+                        ],
+                    },
+                    indent=2,
+                )
+            )
+        else:
+            if not args.progress:
+                print(f"Scanned {len(rows)} target(s) under {args.path}")
+                print()
+            _print_scan_summary(rows)
         return exit_code
 
     return 1

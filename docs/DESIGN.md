@@ -32,6 +32,7 @@ analysis.cfg_taint ──► fixed-point taint + exploit path backtrace
     │
     ▼
 domain.security    ──► YAML policy: sinks, chain primitives, gadget folding
+analysis.gadget_resolver ──► fixed-point multi-hop REDUCE folding (adaptive hop cap)
 ```
 
 PickleProbe never calls `pickle.load()` on untrusted input. Analysis uses `pickletools.genops()` plus a **partial PVM** that tracks enough stack state to resolve lookups and classify invocations.
@@ -59,6 +60,16 @@ See [docs/demo-output.txt](demo-output.txt) for full CLI output (malicious + ben
 
 Memo slots inherit stored security on `GET` (transport, not laundering) — see [SECURITY_POLICY.md](SECURITY_POLICY.md).
 
+## Multi-hop gadget resolution
+
+Shallow per-opcode stubs stop at the first unresolved callable (`INCONCLUSIVE`). PickleProbe runs a **fixed-point pass** over the whole REDUCE graph (`analysis/gadget_resolver.py`):
+
+1. Seed memo slots and producer edges from PVM emulation.
+2. Symbolically fold `__import__` → `getattr` → `partial` → invoke chains.
+3. Repeat until stable or the **adaptive hop cap** is reached.
+
+The hop cap scales with bytecode complexity (`GadgetMetrics`: REDUCE count, memo traffic, globals, stack depth), typically 8–48 iterations. This catches Checkmarx-style bypasses where taint would otherwise die after one hop.
+
 ## Non-goals (explicit limits)
 
 | Limit | Why |
@@ -66,7 +77,7 @@ Memo slots inherit stored security on `GET` (transport, not laundering) — see 
 | Not a production scanner | Learning instrument; no sanitization, no HF integration |
 | Partial PVM | Not every opcode / PyTorch layout fully modeled |
 | No full PickleBall eval | 336-model Zenodo corpus is ~19 GB; we use published subsets |
-| Gadget depth | Long multi-hop chains may stay `INCONCLUSIVE` |
+| Gadget depth | Very long chains capped by adaptive hop budget (8–48); rare paths may stay `INCONCLUSIVE` |
 | Static only | Findings are advisory; no auto-remediation |
 | Name ≠ Fickling `polyglot` | Unrelated Trail of Bits submodule for polyglot *files* |
 

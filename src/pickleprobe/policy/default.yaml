@@ -21,12 +21,21 @@ sinks:
   - { module: pty, name: spawn }
   - { module: commands, name: getoutput }
   - { module: runpy, name: run_path }
+  - { module: shutil, name: rmtree }
+  - { module: shutil, name: move }
+  - { module: ctypes, name: CDLL }
+  - { module: webbrowser, name: open }
+  - { module: pydoc, name: pipepager }
+  - { module: code, name: interact }
+  - { module: pickle, name: loads }
 
 chain_primitives:
   - { module: builtins, name: getattr }
+  - { module: __builtin__, name: getattr }
   - { module: builtins, name: setattr }
   - { module: builtins, name: globals }
   - { module: builtins, name: __import__ }
+  - { module: __builtin__, name: __import__ }
   - { module: operator, name: methodcaller }
   - { module: operator, name: attrgetter }
   - { module: operator, name: itemgetter }

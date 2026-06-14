@@ -8,6 +8,7 @@ from typing import BinaryIO
 
 import pickletools
 
+from pickleprobe.analysis.gadget_resolver import refine_emulation
 from pickleprobe.analysis.cfg_taint import CfgTaintResult, ExploitPath, propagate_cfg_taint
 from pickleprobe.domain.cfg import CFG, EdgeKind, NodeKind
 from pickleprobe.domain.policy import configure_policy, get_policy
@@ -22,7 +23,7 @@ from pickleprobe.domain.values import (
     TaintKind,
     ValueRef,
 )
-from pickleprobe.formats.loader import FileFormat, LoadedFile, load_file
+from pickleprobe.formats.loader import FileFormat, LoadedFile, load_file, read_archive_member
 from pickleprobe.pvm.emulator import EmulationResult, PvmEmulator
 
 
@@ -44,6 +45,9 @@ class AnalysisReport:
     emulation_errors: list[str] = field(default_factory=list)
     max_protocol: int = -1
     raw_size: int = 0
+    gadget_hop_cap: int = 0
+    gadget_iterations: int = 0
+    stack_unreliable_from: int | None = None
 
     @property
     def resolved_globals(self) -> list[GlobalReference]:
@@ -111,6 +115,7 @@ class PickleAnalyzer:
             raise TypeError("expected bytes or binary stream")
 
         emulation = self._emulator.emulate(raw)
+        emulation, _metrics, hop_cap, hop_iters = refine_emulation(emulation)
         cfg = self._build_cfg(raw, emulation)
         cfg_taint = propagate_cfg_taint(cfg)
         memo_warnings = self._memo_warnings(emulation.memo_events, emulation.memo_overwrites)
@@ -130,6 +135,9 @@ class PickleAnalyzer:
             emulation_errors=list(emulation.errors),
             max_protocol=emulation.max_protocol,
             raw_size=len(raw),
+            gadget_hop_cap=hop_cap,
+            gadget_iterations=hop_iters,
+            stack_unreliable_from=emulation.stack_unreliable_from,
         )
 
     def analyze_file(self, path: Path) -> FileAnalysisResult:
@@ -139,6 +147,19 @@ class PickleAnalyzer:
             for stream in loaded.streams
         ]
         return FileAnalysisResult(path=loaded.path, format=loaded.format, streams=reports)
+
+    def analyze_archive_member(self, path: Path, member_name: str) -> AnalysisReport:
+        """Analyze one pickle inside a ``.tar.gz`` without extracting the full archive."""
+        configure_policy(self._policy_path)
+        data = read_archive_member(path, member_name)
+        stream_name = f"{path.name}|{member_name}"
+        return self.analyze(data, stream_name=stream_name)
+
+    def analyze_target(self, path: Path, *, member: str | None = None) -> list[AnalysisReport]:
+        """Analyze a file or a single archive member; returns one report per pickle stream."""
+        if member is not None:
+            return [self.analyze_archive_member(path, member)]
+        return list(self.analyze_file(path).streams)
 
     def _build_cfg(self, data: bytes, emulation: EmulationResult) -> CFG:
         cfg = CFG()

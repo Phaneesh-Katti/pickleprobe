@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from enum import Enum, auto
 from typing import Any
 
 from pickleprobe.domain.taint import SecurityTaint, join_security
@@ -11,6 +10,15 @@ from pickleprobe.domain.policy import SecurityPolicy, get_policy
 
 def _policy() -> SecurityPolicy:
     return get_policy()
+
+
+def _canonical_callable_qn(qualified: str | None) -> str | None:
+    """Normalize protocol-0 ``__builtin__`` globals to ``builtins`` for rule matching."""
+    if not qualified:
+        return None
+    if qualified.startswith("__builtin__."):
+        return "builtins." + qualified.split(".", 1)[1]
+    return qualified
 
 
 def classify_global(module: str | None, name: str | None) -> SecurityTaint:
@@ -25,6 +33,7 @@ def classify_invocation(
     args_security: SecurityTaint,
 ) -> SecurityTaint:
     policy = _policy()
+    callable_qualified = _canonical_callable_qn(callable_qualified)
     base = join_security(callable_security, args_security)
 
     pair = _parse_qualified(callable_qualified) if callable_qualified else None
@@ -51,6 +60,7 @@ def simulate_reduce_result(
     callable_security: SecurityTaint,
 ) -> tuple[str | None, SecurityTaint]:
     policy = _policy()
+    callable_qualified = _canonical_callable_qn(callable_qualified)
 
     if callable_qualified == "builtins.getattr" and args and len(args) == 2:
         attr = args[1]
@@ -146,6 +156,9 @@ def classify_build(
         return SecurityTaint.SINK
     if state_security in (SecurityTaint.SINK, SecurityTaint.SUSPICIOUS):
         return join_security(base, state_security)
+    state_scan = _scan_state_for_injection(state_value, policy)
+    if state_scan is not SecurityTaint.CLEAN:
+        return join_security(base, state_scan)
     if isinstance(state_value, dict):
         for key, val in state_value.items():
             if isinstance(key, str) and key in ("__reduce__", "__reduce_ex__", "__setstate__"):
@@ -157,6 +170,34 @@ def classify_build(
     if instance_qualified is None and base is SecurityTaint.CLEAN:
         return SecurityTaint.INCONCLUSIVE
     return base
+
+
+def _scan_state_for_injection(value: Any, policy: SecurityPolicy) -> SecurityTaint:
+    """Walk BUILD state for embedded code-exec strings or sink references."""
+    if value is None:
+        return SecurityTaint.CLEAN
+    if isinstance(value, str):
+        lower = value.lower()
+        for needle in ("os.system", "subprocess", "eval(", "exec(", "__import__", "popen("):
+            if needle in lower:
+                return SecurityTaint.SUSPICIOUS
+        pair = _parse_qualified(value)
+        if pair and policy.is_sink_pair(pair):
+            return SecurityTaint.SINK
+        return SecurityTaint.CLEAN
+    if isinstance(value, dict):
+        acc = SecurityTaint.CLEAN
+        for k, v in value.items():
+            if isinstance(k, str) and k in ("__reduce__", "__reduce_ex__", "__setstate__", "__dict__"):
+                acc = join_security(acc, SecurityTaint.SUSPICIOUS)
+            acc = join_security(acc, _scan_state_for_injection(v, policy))
+        return acc
+    if isinstance(value, (list, tuple, set, frozenset)):
+        acc = SecurityTaint.CLEAN
+        for item in value:
+            acc = join_security(acc, _scan_state_for_injection(item, policy))
+        return acc
+    return SecurityTaint.CLEAN
 
 
 def _parse_qualified(qualified: str) -> tuple[str, str] | None:
@@ -191,4 +232,6 @@ def _module_hint(obj: Any) -> str | None:
         return obj
     if isinstance(obj, str) and obj.startswith("<module:") and obj.endswith(">"):
         return obj[8:-1]
+    if isinstance(obj, str) and obj.startswith("<reduce@"):
+        return None
     return None

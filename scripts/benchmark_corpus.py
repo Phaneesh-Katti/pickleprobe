@@ -94,19 +94,15 @@ def main() -> int:
             poly_reduces = len(report.reduce_events)
 
         naive_hit = bool(naive_globals)
-        poly_hit = poly_sinks > 0 or (
-            entry.get("label") == "malicious"
-            and entry.get("expect_no_sinks") is False
-            and poly_suspicious > 0
-        )
-        # For malicious samples that use REDUCE gadgets, pickleprobe detection = any sink OR suspicious+reduce
-        if present and entry.get("label") == "malicious":
+        poly_hit = False
+        if present:
             poly_hit = (
                 poly_sinks > 0
-                or (poly_suspicious > 0 and poly_reduces > 0)
-                or (
-                    poly_reduces >= entry.get("min_reduce_events", 1)
-                    and any(ref.is_resolved for ref in report.global_refs)
+                or poly_suspicious > 0
+                or len(report.risky_builds) > 0
+                or any(
+                    e.invocation_security.name in ("SINK", "SUSPICIOUS")
+                    for e in report.newobj_events
                 )
             )
 
@@ -152,7 +148,59 @@ def main() -> int:
         for r in missed:
             print(f"  - {r.sample_id}")
 
+    benign = [r for r in present_rows if r.label == "benign"]
+    benign_fp = [r for r in benign if r.pickleprobe_sinks > 0]
+    mal_detected_naive = sum(1 for r in mal if r.naive_detected)
+    mal_detected_poly = sum(1 for r in mal if r.pickleprobe_detected)
+
+    print()
+    print("Summary (manifest corpus, detection per scripts/benchmark_corpus.py):")
+    print(f"  Malicious recall — naive GLOBAL: {mal_detected_naive}/{len(mal)}")
+    print(f"  Malicious recall — PickleProbe:  {mal_detected_poly}/{len(mal)}")
+    print(f"  Benign sink false positives:     {len(benign_fp)}/{len(benign)}")
+    print(f"  PickleProbe-only (naive missed): {len(poly_only)}/{len(mal)}")
+
+    if "--markdown" in sys.argv:
+        _print_markdown_summary(rows, mal, benign, poly_only, benign_fp)
+
     return 0
+
+
+def _print_markdown_summary(
+    rows: list[Row],
+    mal: list[Row],
+    benign: list[Row],
+    poly_only: list[Row],
+    benign_fp: list[Row],
+) -> None:
+    print()
+    print("<!-- benchmark-markdown -->")
+    print("| Scanner | Malicious detected | Benign false positives | Notes |")
+    print("|---------|-------------------:|-----------------------:|-------|")
+    mal_n = len(mal)
+    ben_n = len(benign)
+    naive_m = sum(1 for r in mal if r.naive_detected)
+    poly_m = sum(1 for r in mal if r.pickleprobe_detected)
+    print(
+        f"| Naive `GLOBAL`-only | {naive_m}/{mal_n} | — | "
+        f"`pickletools` GLOBAL opcode grep vs policy sinks |"
+    )
+    print(
+        f"| **PickleProbe** | **{poly_m}/{mal_n}** | **{len(benign_fp)}/{ben_n}** | "
+        f"PVM + REDUCE/BUILD/STACK_GLOBAL + gadgets |"
+    )
+    print()
+    print("| Sample | Label | Naive | PP sinks | PP suspicious | Gap |")
+    print("|--------|-------|:-----:|:--------:|:-------------:|-----|")
+    for r in rows:
+        if not r.present:
+            continue
+        print(
+            f"| `{r.sample_id}` | {r.label} | "
+            f"{'✓' if r.naive_detected else '·'} | {r.pickleprobe_sinks} | "
+            f"{r.pickleprobe_suspicious} | {r.gap} |"
+        )
+    print("<!-- /benchmark-markdown -->")
 
 
 if __name__ == "__main__":

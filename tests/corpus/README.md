@@ -31,9 +31,23 @@ Never `pickle.load()` or `torch.load(weights_only=False)` on malicious samples o
 
 Ground truth and expected findings: `manifest.yaml` (version 3, 12 samples).
 
-## Optional full PickleBall
+## Optional full PickleBall (~19 GiB compressed, gitignored)
+
+Columbia [PickleBall](https://github.com/columbia/pickleball) Zenodo record — **336 models** in three archives. Stays on disk as `.tar.gz`; PickleProbe reads members directly (no full extract).
 
 ```bash
-./scripts/download_corpus.sh --source-only   # 6 MB tool source
-./scripts/download_corpus.sh                 # full ~19 GB archives (local only, gitignored)
+# Parallel download + live progress (malicious + benign + source concurrently)
+./scripts/download_corpus_monitored.sh --parallel
+
+# Or sequential resume-friendly download
+./scripts/download_corpus.sh
+
+./scripts/verify_corpus.sh   # byte-size checksums
+
+# Analyze archive in place (per-member scan with streaming progress)
+pickleprobe scan tests/corpus/archives/pickleball-malicious.tar.gz --progress --limit 10
+pickleprobe analyze tests/corpus/archives/pickleball-malicious.tar.gz --member ours/call_system.pkl
+
+# Hand-picked subset benchmark (~8 members, fast repeatable eval)
+python scripts/benchmark_pickleball_subset.py
 ```

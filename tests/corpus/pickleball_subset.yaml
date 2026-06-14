@@ -1,0 +1,57 @@
+# Hand-picked PickleBall archive members for fast, repeatable eval.
+# Archives stay compressed under tests/corpus/archives/ (gitignored).
+# Run: python scripts/benchmark_pickleball_subset.py
+
+version: 1
+archives:
+  malicious: tests/corpus/archives/pickleball-malicious.tar.gz
+  benign: tests/corpus/archives/pickleball-benign-abridged.tar.gz
+
+samples:
+  - id: pb-mal-call-system
+    archive: malicious
+    member: ours/call_system.pkl
+    label: malicious
+    notes: "PickleBall canonical os.system gadget"
+
+  - id: pb-mal-write-file
+    archive: malicious
+    member: ours/write_file.pkl
+    label: malicious
+    notes: "PickleBall file-write primitive"
+
+  - id: pb-mal-eval
+    archive: malicious
+    member: ScanMe/Models/Models/eval.pkl
+    label: malicious
+    notes: "HF-style eval.pkl in malicious set"
+
+  - id: pb-mal-bdb-run
+    archive: malicious
+    member: moom825/testing/testing/mal.pkl
+    label: malicious
+    notes: "Debugger-style chain sample"
+
+  - id: pb-mal-stack-global-pt
+    archive: malicious
+    member: Frase/tiny-bert-model-unsafe/tiny-bert-model-unsafe/archive/data.pkl
+    label: malicious
+    notes: "PyTorch ZIP inner data.pkl"
+
+  - id: pb-mal-ankush
+    archive: malicious
+    member: Ankush-Org-New/safe-model/safe-model/model.pkl
+    label: malicious
+    notes: "Misleading safe-model path in malicious corpus"
+
+  - id: pb-benign-flair-small
+    archive: benign
+    member: flair/SequenceTagger/flair-chunk-english-fast/pytorch_model.bin
+    label: benign
+    notes: "Smaller HF-style pytorch_model.bin (~70 MB)"
+
+  - id: pb-benign-yolov5
+    archive: benign
+    member: yolov5/Ultralytics-YOLOv5/yolov5s.pt
+    label: benign
+    notes: "Smallest benign .pt in abridged set (~14 MB)"
